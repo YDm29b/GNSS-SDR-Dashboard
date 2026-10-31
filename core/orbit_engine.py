@@ -194,3 +194,154 @@ class OrbitEngine:
             }
 
         return tracks
+
+    def precompute_simulation(
+        self,
+        base_datetime: datetime,
+        duration_hours: float = 12.0,
+        step_minutes: float = 2.0,
+        observer_lat: float = DEFAULT_OBSERVER_LAT,
+        observer_lon: float = DEFAULT_OBSERVER_LON,
+        observer_elev_m: float = DEFAULT_OBSERVER_ELEV_M,
+        mask_angle_deg: float = DEFAULT_ELEVATION_MASK_DEG
+    ) -> Dict:
+        """
+        Precomputes all orbital parameters for all satellites across the entire
+        simulation window in a single vectorized Skyfield call per satellite.
+
+        Stores results as plain NumPy arrays (pickle-serializable for st.cache_data):
+          - ECEF Cartesian (x, y, z)
+          - Geodetic subpoint (lat, lon, alt)
+          - Topocentric receiver angles (azimuth, elevation, slant range)
+          - Cartesian sky-plot projections (cart_x, cart_y)
+          - Visibility masks and decimated 12h ground track trails
+        """
+        if base_datetime.tzinfo is None:
+            base_datetime = base_datetime.replace(tzinfo=timezone.utc)
+
+        offsets_min = np.arange(0, duration_hours * 60 + (step_minutes / 2.0), step_minutes)
+        times = [base_datetime + timedelta(minutes=float(m)) for m in offsets_min]
+        t_array = self.ts.from_datetimes(times)
+        observer = self.create_observer(observer_lat, observer_lon, observer_elev_m)
+
+        num_sats = len(self.satellites)
+        num_steps = len(offsets_min)
+
+        x_ecef = np.empty((num_sats, num_steps), dtype=np.float32)
+        y_ecef = np.empty((num_sats, num_steps), dtype=np.float32)
+        z_ecef = np.empty((num_sats, num_steps), dtype=np.float32)
+        lat = np.empty((num_sats, num_steps), dtype=np.float32)
+        lon = np.empty((num_sats, num_steps), dtype=np.float32)
+        alt_km = np.empty((num_sats, num_steps), dtype=np.float32)
+        az = np.empty((num_sats, num_steps), dtype=np.float32)
+        el = np.empty((num_sats, num_steps), dtype=np.float32)
+        dist_km = np.empty((num_sats, num_steps), dtype=np.float32)
+
+        sat_meta_list = []
+        for i, s_meta in enumerate(self.satellites):
+            sat_obj = s_meta["skyfield_sat"]
+            sat_meta_list.append({
+                "prn": s_meta["prn"],
+                "norad_id": s_meta["norad_id"],
+                "name": s_meta["name"],
+                "display_name": s_meta["display_name"],
+                "block_type": s_meta["block_type"],
+            })
+
+            # Vectorized Skyfield call for this satellite across the entire time array
+            geo = sat_obj.at(t_array)
+            sub = wgs84.subpoint(geo)
+
+            lat_vals = sub.latitude.degrees
+            lon_vals = sub.longitude.degrees
+            alt_vals = sub.elevation.km
+
+            lat[i] = lat_vals
+            lon[i] = lon_vals
+            alt_km[i] = alt_vals
+
+            # 3D Cartesian coordinates in ECEF frame (km)
+            r_km = WGS84_EARTH_RADIUS_KM + alt_vals
+            lat_rad = np.radians(lat_vals)
+            lon_rad = np.radians(lon_vals)
+            x_ecef[i] = r_km * np.cos(lat_rad) * np.cos(lon_rad)
+            y_ecef[i] = r_km * np.cos(lat_rad) * np.sin(lon_rad)
+            z_ecef[i] = r_km * np.sin(lat_rad)
+
+            # Topocentric calculation relative to ground observer (Azimuth, Elevation, Range)
+            diff = sat_obj - observer
+            topoc = diff.at(t_array)
+            alt_res, az_res, d_res = topoc.altaz()
+            el[i] = alt_res.degrees
+            az[i] = az_res.degrees
+            dist_km[i] = d_res.km
+
+        is_visible = (el >= mask_angle_deg)
+
+        # Cartesian projection for Sky Plot (Item 5)
+        # x = (90 - el) * sin(az), y = (90 - el) * cos(az)
+        az_rad = np.radians(az)
+        r_sky = 90.0 - el
+        cart_x = r_sky * np.sin(az_rad)
+        cart_y = r_sky * np.cos(az_rad)
+
+        # Formatted step labels for Plotly animation slider
+        time_labels = []
+        slider_labels = []
+        for m in offsets_min:
+            h = int(m // 60)
+            mins = int(m % 60)
+            time_labels.append(f"+{h:02d}:{mins:02d}")
+            slider_labels.append(f"+{h}h" if mins == 0 else f"+{h}h {mins:02d}m")
+
+        # Decimated ground tracks (Item 4: roughly every 5th point)
+        decimation_stride = max(1, int(round(5 * (2.0 / step_minutes))))
+        ground_tracks = {}
+        for i, s_meta in enumerate(self.satellites):
+            s_lats = lat[i, ::decimation_stride]
+            s_lons = lon[i, ::decimation_stride]
+
+            clean_lats = []
+            clean_lons = []
+            for j in range(len(s_lons)):
+                if j > 0 and abs(s_lons[j] - s_lons[j - 1]) > 180.0:
+                    clean_lats.append(None)
+                    clean_lons.append(None)
+                clean_lats.append(float(s_lats[j]))
+                clean_lons.append(float(s_lons[j]))
+
+            ground_tracks[s_meta["display_name"]] = {
+                "lats": clean_lats,
+                "lons": clean_lons,
+                "prn": s_meta["prn"]
+            }
+
+        return {
+            "x_ecef": x_ecef,
+            "y_ecef": y_ecef,
+            "z_ecef": z_ecef,
+            "lat": lat,
+            "lon": lon,
+            "alt_km": alt_km,
+            "az": az,
+            "el": el,
+            "dist_km": dist_km,
+            "is_visible": is_visible,
+            "cart_x": cart_x,
+            "cart_y": cart_y,
+            "offsets_min": offsets_min,
+            "time_labels": time_labels,
+            "slider_labels": slider_labels,
+            "ground_tracks": ground_tracks,
+            "satellites": sat_meta_list,
+            "num_sats": num_sats,
+            "num_steps": num_steps,
+            "base_datetime_iso": base_datetime.isoformat(),
+            "observer_lat": observer_lat,
+            "observer_lon": observer_lon,
+            "observer_elev_m": observer_elev_m,
+            "mask_angle_deg": mask_angle_deg,
+            "step_minutes": step_minutes,
+            "duration_hours": duration_hours,
+        }
+
