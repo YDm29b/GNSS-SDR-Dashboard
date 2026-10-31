@@ -82,43 +82,36 @@ def create_animated_ground_track_figure(
     hid_mask_0 = ~vis_mask_0
     sats_meta = sim_data["satellites"]
 
-    def extract_geo_payload(step_idx: int, mask: np.ndarray, is_vis: bool):
-        sat_indices = np.where(mask)[0]
-        if len(sat_indices) == 0:
-            return dict(lat=[], lon=[], text=[], customdata=[])
+    # Extract satellite metadata arrays once for ultra-fast string formatting
+    names = [s["display_name"] for s in sats_meta]
+    norads = [str(s["norad_id"]) for s in sats_meta]
+    blocks = [s["block_type"] for s in sats_meta]
 
-        lat_vals = sim_data["lat"][sat_indices, step_idx].tolist()
-        lon_vals = sim_data["lon"][sat_indices, step_idx].tolist()
-        texts = [sats_meta[i]["display_name"] for i in sat_indices]
+    def build_geo_payload(step: int, mask: np.ndarray, is_vis: bool):
+        indices = np.where(mask)[0]
+        if len(indices) == 0:
+            return dict(lat=[], lon=[], text=[], hovertext=[])
 
-        custom_data = [
+        lat_vals = sim_data["lat"][indices, step].tolist()
+        lon_vals = sim_data["lon"][indices, step].tolist()
+        texts = [names[i] for i in indices] if is_vis else None
+
+        status_str = "Visible Overhead (El ≥ mask)" if is_vis else "Below Horizon"
+        hover_list = [
             (
-                sats_meta[i]["display_name"],
-                sats_meta[i]["norad_id"],
-                sats_meta[i]["block_type"],
-                float(sim_data["alt_km"][i, step_idx]),
-                float(sim_data["lat"][i, step_idx]),
-                float(sim_data["lon"][i, step_idx]),
-                float(sim_data["az"][i, step_idx]),
-                float(sim_data["el"][i, step_idx]),
-                "Visible (Acquisition Zone)" if is_vis else "Below Horizon"
+                f"<b>{names[i]}</b> (NORAD {norads[i]})<br>"
+                f"Block: {blocks[i]}<br>"
+                f"Sub-point: Lat {float(sim_data['lat'][i, step]):.2f}°, Lon {float(sim_data['lon'][i, step]):.2f}°<br>"
+                f"Altitude: {float(sim_data['alt_km'][i, step]):,.0f} km<br>"
+                f"Azimuth: {float(sim_data['az'][i, step]):.1f}° | Elevation: <b>{float(sim_data['el'][i, step]):.1f}°</b><br>"
+                f"Status: <b>{status_str}</b>"
             )
-            for i in sat_indices
+            for i in indices
         ]
-        return dict(lat=lat_vals, lon=lon_vals, text=texts, customdata=custom_data)
+        return dict(lat=lat_vals, lon=lon_vals, text=texts, hovertext=hover_list)
 
-    p0_vis = extract_geo_payload(t0, vis_mask_0, True)
-    p0_hid = extract_geo_payload(t0, hid_mask_0, False)
-
-    hover_template = (
-        "<b>%{customdata[0]}</b> (NORAD %{customdata[1]})<br>"
-        "Block: %{customdata[2]}<br>"
-        "Sub-point: Lat %{customdata[4]:.2f}°, Lon %{customdata[5]:.2f}°<br>"
-        "Altitude: %{customdata[3]:,.0f} km<br>"
-        "Azimuth: %{customdata[6]:.1f}° | Elevation: <b>%{customdata[7]:.1f}°</b><br>"
-        "Status: <b>%{customdata[8]}</b>"
-        "<extra></extra>"
-    )
+    p0_vis = build_geo_payload(t0, vis_mask_0, True)
+    p0_hid = build_geo_payload(t0, hid_mask_0, False)
 
     fig.add_trace(go.Scattergeo(
         lat=p0_vis["lat"], lon=p0_vis["lon"],
@@ -127,8 +120,8 @@ def create_animated_ground_track_figure(
         text=p0_vis["text"],
         textposition="top center",
         textfont=dict(color="#00ff88", size=9, family="Orbitron, monospace"),
-        customdata=p0_vis["customdata"],
-        hovertemplate=hover_template,
+        hovertext=p0_vis["hovertext"],
+        hoverinfo="text",
         name="Visible Overhead (El ≥ mask)"
     ))
 
@@ -137,8 +130,8 @@ def create_animated_ground_track_figure(
         mode="markers",
         marker=dict(size=4.5, color="#ffa200", symbol="circle", opacity=0.75, line=dict(color="#222222", width=0.5)),
         text=None,
-        customdata=p0_hid["customdata"],
-        hovertemplate=hover_template,
+        hovertext=p0_hid["hovertext"],
+        hoverinfo="text",
         name="Below Horizon"
     ))
 
@@ -151,18 +144,18 @@ def create_animated_ground_track_figure(
     for step in range(num_steps):
         v_mask = sim_data["is_visible"][:, step]
         h_mask = ~v_mask
-        p_v = extract_geo_payload(step, v_mask, True)
-        p_h = extract_geo_payload(step, h_mask, False)
+        p_v = build_geo_payload(step, v_mask, True)
+        p_h = build_geo_payload(step, h_mask, False)
 
         frame = go.Frame(
             data=[
                 go.Scattergeo(
                     lat=p_v["lat"], lon=p_v["lon"],
-                    text=p_v["text"], customdata=p_v["customdata"]
+                    text=p_v["text"], hovertext=p_v["hovertext"], hoverinfo="text"
                 ),
                 go.Scattergeo(
                     lat=p_h["lat"], lon=p_h["lon"],
-                    text=None, customdata=p_h["customdata"]
+                    text=None, hovertext=p_h["hovertext"], hoverinfo="text"
                 )
             ],
             traces=[idx_vis, idx_hid],

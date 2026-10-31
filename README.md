@@ -152,17 +152,3 @@ GNSS SDR Dashboard/
 ```
 
 ---
-
-## 🎓 Supervisor Defense Q&A Cheatsheet
-
-**Q: Why do GPS ground tracks oscillate only between $+55^\circ$ and $-55^\circ$ latitude?**  
-*A: Because the orbital inclination $i$ is $55.0^\circ$. A satellite's sub-point latitude $\phi(t)$ is bounded by $[-i, +i]$. It reaches its maximum latitude at the orbital vertex (argument of latitude $u = 90^\circ$).*
-
-**Q: Why is the GPS orbital period $\approx 11\text{h } 58\text{m}$ rather than $12\text{ hours}$?**  
-*A: Earth rotates once relative to the stars in a sidereal day ($23\text{h } 56\text{m } 04\text{s}$), not a solar day ($24\text{h}$). Since GPS orbits are semi-synchronous (2 revolutions per sidereal day), the orbital period is exactly half a sidereal day ($11\text{h } 58\text{m } 02\text{s}$), producing repeating daily ground tracks.*
-
-**Q: Why is SGP4 preferred over numerical Runge-Kutta integration here?**  
-*A: TLE data is specifically formatted as mean orbital elements calibrated for the SGP4 analytical theory. Using a numerical integrator on raw TLE elements would yield inaccurate results because the osculating elements must first be reconstituted via the SGP4 theory.*
-
-**Q: Why is an elevation mask (e.g., $5^\circ$) applied on the Sky-Plot?**  
-*A: Satellites close to the horizon travel through a significantly longer tropospheric path length, introducing severe atmospheric delay errors, ionospheric scintillation, and ground multipath reflections that degrade receiver positioning.*
