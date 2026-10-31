@@ -177,7 +177,7 @@ with st.sidebar:
 # 3. Data Ingestion & Orbital Mechanics Engine
 # ==============================================================================
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def load_and_initialize_constellation(offline_mode: bool):
     """
     Caches TLE data fetch and SGP4 satellite object initialization.

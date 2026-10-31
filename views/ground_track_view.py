@@ -144,10 +144,8 @@ def create_ground_track_figure(
             countrywidth=0.8,
             coastlinecolor="#3d526d",
             coastlinewidth=1.0,
-            showgrid=True,
-            gridcolor="rgba(255, 255, 255, 0.08)",
-            lataxis=dict(range=[-75, 75], dtick=30),
-            lonaxis=dict(range=[-180, 180], dtick=60),
+            lataxis=dict(showgrid=True, gridcolor="rgba(255, 255, 255, 0.1)", range=[-75, 75], dtick=30),
+            lonaxis=dict(showgrid=True, gridcolor="rgba(255, 255, 255, 0.1)", range=[-180, 180], dtick=60),
             bgcolor="#0c1017"
         ),
         legend=dict(
