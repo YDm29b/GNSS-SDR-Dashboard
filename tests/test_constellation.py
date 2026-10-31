@@ -37,7 +37,7 @@ def test_tle_parsing():
     prns = [s["prn"] for s in satellites if s["prn"] is not None]
     print(f"      Identified {len(prns)} valid PRN numbers: {sorted(prns)[:8]}...")
     assert len(prns) >= 28, "Too few satellites with identified PRN numbers"
-    print("      ✓ PASSED")
+    print("      [PASS] TLE parsing verified.")
     return satellites
 
 
@@ -59,7 +59,7 @@ def test_sgp4_propagation_physics(satellites):
     for sat in results:
         alt = sat["altitude_km"]
         radius = sat["radius_km"]
-        # MEO orbital altitude check: 19,000 km to 21,500 km
+        # MEO orbital altitude check: 19,000 km to 22,000 km
         assert 19000 <= alt <= 22000, f"Unrealistic altitude for {sat['display_name']}: {alt} km"
         # Radius check: r ~ 26,560 km
         assert 25000 <= radius <= 28000, f"Unrealistic orbital radius for {sat['display_name']}: {radius} km"
@@ -68,14 +68,14 @@ def test_sgp4_propagation_physics(satellites):
         # Sub-point longitude within [-180, 180]
         assert -180.0 <= sat["longitude"] <= 180.0, f"Invalid longitude: {sat['longitude']}"
 
-    print(f"      ✓ All {len(results)} satellites conform to MEO bounds (Alt: 20,200 km, Inc: 55°)")
+    print(f"      [PASS] All {len(results)} satellites conform to MEO bounds (Alt: 20,200 km, Inc: 55 deg)")
     return engine, results
 
 
 def test_observer_visibility_and_angles(results):
     print("[3/5] Testing Multan observer topocentric coordinates...")
     visible_sats = [s for s in results if s["is_visible"]]
-    print(f"      Satellites currently visible above 5° mask in Multan: {len(visible_sats)}")
+    print(f"      Satellites currently visible above 5 deg mask in Multan: {len(visible_sats)}")
 
     # Standard GPS constellation guarantees 4 or more visible satellites everywhere on Earth
     assert len(visible_sats) >= 4, f"Fewer than 4 satellites in view ({len(visible_sats)}); 3D fix impossible!"
@@ -87,9 +87,14 @@ def test_observer_visibility_and_angles(results):
 
         assert 0.0 <= az <= 360.0, f"Azimuth out of range [0, 360]: {az}"
         assert -90.0 <= el <= 90.0, f"Elevation out of range [-90, 90]: {el}"
-        assert 19000 <= rng <= 28000, f"Slant range unrealistic: {rng} km"
+        # For visible satellites (elevation >= 0), slant range is between ~20,180 km (zenith) and ~25,800 km (horizon)
+        if el >= 0:
+            assert 19000 <= rng <= 26500, f"Visible slant range unrealistic for {sat['display_name']}: {rng} km"
+        else:
+            # Satellites on the opposite side of Earth can have slant ranges up to ~33,000 km (26560 + 6378)
+            assert 19000 <= rng <= 33500, f"Antipodal slant range unrealistic for {sat['display_name']}: {rng} km"
 
-    print("      ✓ PASSED (Azimuth, Elevation, and Slant Range verified)")
+    print("      [PASS] Observer Azimuth, Elevation, and Slant Range verified.")
 
 
 def test_orbital_motion_continuity(engine):
@@ -113,10 +118,10 @@ def test_orbital_motion_continuity(engine):
         dist = (dx**2 + dy**2 + dz**2)**0.5
 
         # In ECEF, Earth rotates underneath (~465 m/s at equator),
-        # so total delta position in ECEF over 5 min is between 700 km and 1,800 km
+        # so total delta position in ECEF over 5 min is between 700 km and 2000 km
         assert 700 <= dist <= 2000, f"Discontinuous jump or stationary error for {s1['display_name']}: {dist} km"
 
-    print("      ✓ Motion is continuous and physically accurate (mean v ~ 3.87 km/s)")
+    print("      [PASS] Motion is continuous and physically accurate (mean v ~ 3.87 km/s)")
 
 
 def test_ground_track_history(engine):
@@ -128,7 +133,7 @@ def test_ground_track_history(engine):
     sample_key = list(tracks.keys())[0]
     sample_track = tracks[sample_key]
     assert len(sample_track["lats"]) > 20, "Ground track contains too few points"
-    print(f"      ✓ Successfully generated repeating ground tracks over 11h 58m for {len(tracks)} satellites")
+    print(f"      [PASS] Successfully generated repeating ground tracks over 11h 58m for {len(tracks)} satellites")
 
 
 if __name__ == "__main__":
