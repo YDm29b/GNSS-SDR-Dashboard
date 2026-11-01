@@ -206,7 +206,7 @@ with st.sidebar:
     step_minutes = st.selectbox(
         "Simulation Step Size",
         options=[2.0, 3.0, 5.0, 10.0],
-        index=0,
+        index=2,
         format_func=lambda x: f"{int(x)} min (~{int(720 / x)} frames)"
     )
 
@@ -338,16 +338,14 @@ def get_cached_2d_figure(_sim_data, obs_name, show_tracks):
 def get_cached_sky_figure(_sim_data, obs_name):
     return create_animated_skyplot_figure(_sim_data, obs_name)
 
-tab_sync, tab_3d, tab_2d, tab_sky, tab_table, tab_theory = st.tabs([
-    "🛰️ Synchronized Dual View (3D + 2D)",
-    "🌐 3D Constellation Orbit View",
-    "🗺️ 2D Ground-Track Map",
-    "📡 Topocentric Sky-Plot (Zoom Fix)",
-    "📊 Ephemeris Telemetry Table",
-    "📖 Orbital Mechanics Guide"
-])
+selected_view = st.radio(
+    "Dashboard view",
+    ["Synchronized", "3D Globe", "Ground Track", "Sky Plot", "Telemetry", "Orbital Mechanics"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
-with tab_sync:
+if selected_view == "Synchronized":
     st.markdown("#### Synchronized 3D Constellation & 2D Ground-Track View")
     st.caption("Unified dual-panel view driven by a single set of client-side animation frames. Press ▶ Play on the control bar below to animate both views in seamless lockstep.")
     fig_combined = get_cached_unified_figure(
@@ -358,7 +356,7 @@ with tab_sync:
     )
     st.plotly_chart(fig_combined, use_container_width=True)
 
-with tab_3d:
+elif selected_view == "3D Globe":
     st.markdown("#### 3D Earth Globe & GPS Orbital Shell")
     st.caption("32 operational GPS satellites in Medium Earth Orbit (~20,200 km, 55° inclination). Smooth orbit drag rotation enabled with camera persistence across frames.")
     fig_3d = get_cached_3d_figure(
@@ -368,7 +366,7 @@ with tab_3d:
     )
     st.plotly_chart(fig_3d, use_container_width=True)
 
-with tab_2d:
+elif selected_view == "Ground Track":
     st.markdown("#### 2D Sub-Satellite Ground-Track Projection (WGS84)")
     st.caption("Sub-satellite points and repeating ground tracks oscillating between ±55° latitude. Native animation frames update satellite positions without full-page reloads.")
     fig_2d = get_cached_2d_figure(
@@ -378,7 +376,7 @@ with tab_2d:
     )
     st.plotly_chart(fig_2d, use_container_width=True)
 
-with tab_sky:
+elif selected_view == "Sky Plot":
     st.markdown(f"#### Cartesian Topocentric Sky-Plot for {obs_name}")
     st.caption("ITEM 5 Zoom Fix: Standard Cartesian radar plot. Zoom with mouse wheel, pan freely, and double-click to reset. Green markers denote satellites in the SDR acquisition zone.")
     fig_sky = get_cached_sky_figure(
@@ -387,7 +385,7 @@ with tab_sky:
     )
     st.plotly_chart(fig_sky, use_container_width=True)
 
-with tab_table:
+elif selected_view == "Telemetry":
     st.markdown("#### Real-Time Ephemeris & Signal Acquisition Telemetry")
     st.caption("Instantaneous telemetry table computed directly from precomputed NumPy arrays (Item 7). Select any timestep to inspect coordinates without re-running orbital physics.")
 
@@ -402,7 +400,7 @@ with tab_table:
     st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     render_telemetry_table_from_sim(sim_data, step_idx=selected_step)
 
-with tab_theory:
+elif selected_view == "Orbital Mechanics":
     st.markdown("""
     ### 📖 Physics & Engineering Documentation for Supervisor Defense
 
